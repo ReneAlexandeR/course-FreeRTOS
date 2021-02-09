@@ -48,6 +48,9 @@ int main(void)
 	printf("FreeRTOS demo example!\n");
 #endif
 
+	// Enable CYCCNT in DWT_CTRL (MX Cycle counter)
+	DWT->CTRL |= (1 << 0);
+
 	// Reset the clock configuration to default:
 	// HSI ON, HSE and PLL OFF system clock = 16 MHz
 	RCC_DeInit();
@@ -60,6 +63,10 @@ int main(void)
 
 	sprintf(message, "Hello world application starting\r\n");
 	printViaUART(message);
+
+	// Initialize recording with SEGGER
+	SEGGER_SYSVIEW_Conf();
+	SEGGER_SYSVIEW_Start();
 
 	// Create tasks
 	xTaskCreate( vTask1_Handler,
