@@ -16,23 +16,24 @@
 #include <stdint.h>
 #include <string.h>
 
-#define TRUE 			1
-#define FALSE			0
-#define AVAILABLE		TRUE
-#define NON_AVAILABLE	FALSE
+#define TRUE 				1
+#define FALSE				0
+#define AVAILABLE			TRUE
+#define NON_AVAILABLE		FALSE
+#define BUTTON_PRESSED		TRUE
+#define BUTTON_UNPRESSED	FALSE
 
-TaskHandle_t xTask1_Handle = NULL;
-TaskHandle_t xTask2_Handle = NULL;
-
-uint8_t UART_ACCESS_KEY = AVAILABLE;
+// global variables
 char message[100];
+uint8_t button_input_flag = FALSE;
 
 // Task function prototypes
-void vTask1_Handler(void *params);
-void vTask2_Handler(void *params);
+void button_task_handler(void *params);
+void led_task_handler(void *params);
 
 static void prvSetupHardware();
 static void prvSetupUART();
+static void prvSetupButtonAndLED();
 
 void printViaUART(char* msg);
 
@@ -61,7 +62,7 @@ int main(void)
 	//Configure peripherals
 	prvSetupHardware();
 
-	sprintf(message, "Hello world application starting\r\n");
+	sprintf(message, "LED-BUTTON application starting\r\n");
 	printViaUART(message);
 
 	// Initialize recording with SEGGER
@@ -69,19 +70,19 @@ int main(void)
 	SEGGER_SYSVIEW_Start();
 
 	// Create tasks
-	xTaskCreate( vTask1_Handler,
-                 "Task-1", /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
+	xTaskCreate( button_task_handler,
+                 "BUTTON-TASK", /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 				 configMINIMAL_STACK_SIZE,
                  NULL,
                  2,
-                 &xTask1_Handle );
+                 NULL );
 
-	xTaskCreate( vTask2_Handler,
-                 "Task-2", /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
+	xTaskCreate( led_task_handler,
+                 "LED-TASK", /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 				 configMINIMAL_STACK_SIZE,
                  NULL,
                  2,
-                 &xTask2_Handle );
+                 NULL );
 
 	// Start the scheduler
 	vTaskStartScheduler();
@@ -91,30 +92,34 @@ int main(void)
 }
 
 
-void vTask1_Handler(void *params)
+void button_task_handler(void *params)
 {
 	while(1)
 	{
-		if (UART_ACCESS_KEY == AVAILABLE)
+		if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_0) == Bit_SET)
 		{
-			UART_ACCESS_KEY = NON_AVAILABLE;
-			printViaUART("TASK 1 is running!\r\n");
-			UART_ACCESS_KEY = AVAILABLE;
-			taskYIELD();
+			button_input_flag = BUTTON_PRESSED;
+		}
+		else
+		{
+			button_input_flag = BUTTON_UNPRESSED;
 		}
 	}
 }
 
-void vTask2_Handler(void *params)
+void led_task_handler(void *params)
 {
 	while(1)
 	{
-		if (UART_ACCESS_KEY == AVAILABLE)
+		if (button_input_flag == BUTTON_PRESSED)
 		{
-			UART_ACCESS_KEY = NON_AVAILABLE;
-			printViaUART("TASK 2 is running!\r\n");
-			UART_ACCESS_KEY = AVAILABLE;
-			taskYIELD();
+			// Set the LED
+			GPIO_WriteBit(GPIOD, GPIO_Pin_12, Bit_SET);
+		}
+		else
+		{
+			// Reset the LED
+			GPIO_WriteBit(GPIOD, GPIO_Pin_12, Bit_RESET);
 		}
 	}
 }
@@ -123,6 +128,7 @@ static void prvSetupHardware(void)
 {
 
 	prvSetupUART();
+	prvSetupButtonAndLED();
 
 }
 
@@ -131,15 +137,16 @@ static void prvSetupUART(void)
 	GPIO_InitTypeDef gpio_uartPins; 		// GPIO initialization structure
 	USART_InitTypeDef usart2_init;			// USART initialization structure
 
-	// Clear the memory used by initalization variables
+	// Clear the memory used by initialization variables
 	memset(&gpio_uartPins, 0, sizeof(gpio_uartPins));
 	memset(&usart2_init, 0, sizeof(usart2_init));
 
-	// Enable USART2 and GPIOA peripheral clock
+	// Enable USART2, GPIOA  and GPIOD peripheral clocks
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
 
-	//Initialize and configure functionality for GPIO pins 2
+	//Initialize and configure functionality for:
+	//GPIO uart pins 2 and 3
 	gpio_uartPins.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3;
 	gpio_uartPins.GPIO_Mode = GPIO_Mode_AF;
 	gpio_uartPins.GPIO_PuPd = GPIO_PuPd_UP;
@@ -160,6 +167,33 @@ static void prvSetupUART(void)
 
 	// Enable USART2 peripheral
 	USART_Cmd(USART2, ENABLE);
+}
+
+static void prvSetupButtonAndLED()
+{
+	GPIO_InitTypeDef gpio_pushButton;		// GPIOA push button init struct
+	GPIO_InitTypeDef gpio_led;				// GPIOD LED init struct
+
+	// Clear the memory used by initialization variables
+	memset(&gpio_pushButton, 0, sizeof(gpio_pushButton));
+	memset(&gpio_led, 0, sizeof(gpio_led));
+
+	// Enable peripheral clocks
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+
+	// Push button
+	gpio_pushButton.GPIO_Mode = GPIO_Mode_IN;
+	gpio_pushButton.GPIO_Pin = GPIO_Pin_0;
+	gpio_pushButton.GPIO_PuPd = GPIO_PuPd_DOWN;
+	GPIO_Init(GPIOA, &gpio_pushButton);
+
+	// LED
+	gpio_led.GPIO_Mode = GPIO_Mode_OUT;
+	gpio_led.GPIO_Pin = GPIO_Pin_12;
+	gpio_led.GPIO_PuPd = GPIO_PuPd_NOPULL;
+	gpio_led.GPIO_OType = GPIO_OType_PP;
+	GPIO_Init(GPIOD, &gpio_led);
 }
 
 void printViaUART(char* msg)
