@@ -8,7 +8,9 @@
   ******************************************************************************
 */
 
-
+/**************************************************************************************************
+ * 		INCLUDES
+ *************************************************************************************************/
 #include "stm32f4xx.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -16,6 +18,9 @@
 #include <stdint.h>
 #include <string.h>
 
+/**************************************************************************************************
+ * 		DEFINES
+ *************************************************************************************************/
 #define TRUE 				1
 #define FALSE				0
 #define AVAILABLE			TRUE
@@ -23,11 +28,21 @@
 #define BUTTON_PRESSED		TRUE
 #define BUTTON_UNPRESSED	FALSE
 
-// global variables
+#ifdef USE_SEMIHOSTING
+// Used for semihosting
+extern void initialise_monitor_handles();
+#endif
+
+/**************************************************************************************************
+ * 		GLOBAL VARIABLES
+ *************************************************************************************************/
 char message[100];
 uint8_t button_input_flag = FALSE;
+void printViaUART(char* msg);
 
-// Task function prototypes
+/**************************************************************************************************
+ * 		FUNCTION PROTOTYPES
+ *************************************************************************************************/
 void button_handler(void *params);
 void led_task_handler(void *params);
 
@@ -35,13 +50,9 @@ static void prvSetupHardware();
 static void prvSetupUART();
 static void prvSetupButtonAndLED();
 
-void printViaUART(char* msg);
-
-#ifdef USE_SEMIHOSTING
-// Used for semihosting
-extern void initialise_monitor_handles();
-#endif
-
+/**************************************************************************************************
+ * 		Application MAIN function
+ *************************************************************************************************/
 int main(void)
 {
 #ifdef USE_SEMIHOSTING
@@ -84,12 +95,17 @@ int main(void)
 	for(;;);
 }
 
-
+/**************************************************************************************************
+ * 		Button toggling handler
+ *************************************************************************************************/
 void button_handler(void *params)
 {
 	button_input_flag ^= 1;
 }
 
+/**************************************************************************************************
+ * 		LED FreeRTOS task
+ *************************************************************************************************/
 void led_task_handler(void *params)
 {
 	while(1)
@@ -106,7 +122,9 @@ void led_task_handler(void *params)
 		}
 	}
 }
-
+/**************************************************************************************************
+ * 		General hardware initialization and configuration
+ *************************************************************************************************/
 static void prvSetupHardware(void)
 {
 
@@ -115,6 +133,9 @@ static void prvSetupHardware(void)
 
 }
 
+/**************************************************************************************************
+ * 		UART initialization and configuration
+ *************************************************************************************************/
 static void prvSetupUART(void)
 {
 	GPIO_InitTypeDef gpio_uartPins; 		// GPIO initialization structure
@@ -152,6 +173,9 @@ static void prvSetupUART(void)
 	USART_Cmd(USART2, ENABLE);
 }
 
+/**************************************************************************************************
+ * 		BUTTON and LED initialization and configuration
+ *************************************************************************************************/
 static void prvSetupButtonAndLED()
 {
 	GPIO_InitTypeDef gpio_pushButton;		// GPIOA push button init struct
@@ -200,6 +224,9 @@ static void prvSetupButtonAndLED()
 	GPIO_Init(GPIOD, &gpio_led);
 }
 
+/**************************************************************************************************
+ * 		Print messages via UART peripheral
+ *************************************************************************************************/
 void printViaUART(char* msg)
 {
 	for (uint32_t i = 0; i < strlen(msg); i++)
@@ -209,6 +236,9 @@ void printViaUART(char* msg)
 	}
 }
 
+/**************************************************************************************************
+ * 		External interrupt handler overloading for button detection
+ *************************************************************************************************/
 void EXTI0_IRQHandler(void)
 {
 	traceISR_ENTER();
@@ -216,7 +246,5 @@ void EXTI0_IRQHandler(void)
 	EXTI_ClearITPendingBit(EXTI_Line0);
 	button_handler(NULL);
 	traceISR_EXIT();
-
-
 
 }
