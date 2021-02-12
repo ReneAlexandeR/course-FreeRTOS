@@ -28,7 +28,7 @@ char message[100];
 uint8_t button_input_flag = FALSE;
 
 // Task function prototypes
-void button_task_handler(void *params);
+void button_handler(void *params);
 void led_task_handler(void *params);
 
 static void prvSetupHardware();
@@ -70,13 +70,6 @@ int main(void)
 	SEGGER_SYSVIEW_Start();
 
 	// Create tasks
-	xTaskCreate( button_task_handler,
-                 "BUTTON-TASK", /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
-				 configMINIMAL_STACK_SIZE,
-                 NULL,
-                 2,
-                 NULL );
-
 	xTaskCreate( led_task_handler,
                  "LED-TASK", /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 				 configMINIMAL_STACK_SIZE,
@@ -92,19 +85,9 @@ int main(void)
 }
 
 
-void button_task_handler(void *params)
+void button_handler(void *params)
 {
-	while(1)
-	{
-		if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_0) == Bit_SET)
-		{
-			button_input_flag = BUTTON_PRESSED;
-		}
-		else
-		{
-			button_input_flag = BUTTON_UNPRESSED;
-		}
-	}
+	button_input_flag ^= 1;
 }
 
 void led_task_handler(void *params)
@@ -179,14 +162,35 @@ static void prvSetupButtonAndLED()
 	memset(&gpio_led, 0, sizeof(gpio_led));
 
 	// Enable peripheral clocks
-	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
-	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);	// GPIOA
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);	// GPIOD
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);	// SYSCFG
 
 	// Push button
 	gpio_pushButton.GPIO_Mode = GPIO_Mode_IN;
 	gpio_pushButton.GPIO_Pin = GPIO_Pin_0;
 	gpio_pushButton.GPIO_PuPd = GPIO_PuPd_DOWN;
 	GPIO_Init(GPIOA, &gpio_pushButton);
+
+	// Interrupt configuration for button
+	// System config for EXTI line
+	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA, EXTI_PinSource0);
+
+	// Configure EXTI block (ST specific)
+	// EXTI line 0 (PA0), falling edge, interrupt mode
+	EXTI_InitTypeDef exti_init;
+	exti_init.EXTI_Line = EXTI_Line0;
+	exti_init.EXTI_Mode = EXTI_Mode_Interrupt;
+	exti_init.EXTI_Trigger = EXTI_Trigger_Falling;
+	exti_init.EXTI_LineCmd = ENABLE;
+
+	EXTI_Init(&exti_init);
+
+	// NVIC configuration (ARM specific)
+	// for selected EXTI line
+	NVIC_SetPriority(EXTI0_IRQn, 5);
+	NVIC_EnableIRQ(EXTI0_IRQn);
+
 
 	// LED
 	gpio_led.GPIO_Mode = GPIO_Mode_OUT;
@@ -203,4 +207,16 @@ void printViaUART(char* msg)
 		while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) != SET);
 		USART_SendData(USART2, msg[i]);
 	}
+}
+
+void EXTI0_IRQHandler(void)
+{
+	traceISR_ENTER();
+	// Clear interrupt pending bit of the EXTI line
+	EXTI_ClearITPendingBit(EXTI_Line0);
+	button_handler(NULL);
+	traceISR_EXIT();
+
+
+
 }
