@@ -40,6 +40,8 @@ char message[100];
 uint8_t button_input_flag = FALSE;
 void printViaUART(char* msg);
 
+TaskHandle_t LED_taskHandle = NULL;
+
 /**************************************************************************************************
  * 		FUNCTION PROTOTYPES
  *************************************************************************************************/
@@ -86,7 +88,7 @@ int main(void)
 				 configMINIMAL_STACK_SIZE,
                  NULL,
                  2,
-                 NULL );
+				 &LED_taskHandle );
 
 	// Start the scheduler
 	vTaskStartScheduler();
@@ -101,6 +103,7 @@ int main(void)
 void button_handler(void *params)
 {
 	button_input_flag ^= 1;
+	xTaskGenericNotifyFromISR(LED_taskHandle, 0x0, eNoAction, NULL, NULL);
 }
 
 /**************************************************************************************************
@@ -110,15 +113,20 @@ void led_task_handler(void *params)
 {
 	while(1)
 	{
-		if (button_input_flag == BUTTON_PRESSED)
+		if (xTaskNotifyWait(0x0, 0x0, NULL, portMAX_DELAY) == pdTRUE)
 		{
-			// Set the LED
-			GPIO_WriteBit(GPIOD, GPIO_Pin_12, Bit_SET);
-		}
-		else
-		{
-			// Reset the LED
-			GPIO_WriteBit(GPIOD, GPIO_Pin_12, Bit_RESET);
+			if (button_input_flag == BUTTON_PRESSED)
+			{
+				// Set the LED
+				GPIO_WriteBit(GPIOD, GPIO_Pin_12, Bit_SET);
+			}
+			else
+			{
+				// Reset the LED
+				GPIO_WriteBit(GPIOD, GPIO_Pin_12, Bit_RESET);
+			}
+			sprintf(message, "Notification received! Toggling LED \r\n");
+			printViaUART(message);
 		}
 	}
 }
